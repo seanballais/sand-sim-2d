@@ -58,6 +58,9 @@ int main()
   bool isPhysicsEnabled = true;
 
   int fps = 0;
+
+  // To allow limit the spawning of new sand grains to every 50ms.
+  float grainSpawnerAccumulator = 0.0f;
   while (window.isOpen()) {
     sf::Time timeElapsed = appClock.restart();
     float deltaTime = timeElapsed.asMilliseconds() / 1000.f;
@@ -69,12 +72,6 @@ int main()
         case sf::Event::Closed:
           window.close();
           break;
-        case sf::Event::MouseButtonPressed:
-          if (event.mouseButton.button == sf::Mouse::Left) {
-            sf::Vector2i mouseCellPos = getCellPositionFromMouse(window);
-            sandLocs.push_back(sf::Vector2i(mouseCellPos.x, mouseCellPos.y));
-          }
-          break;
         case sf::Event::KeyPressed:
           if (event.key.code == sf::Keyboard::C) {
             sandLocs.clear();
@@ -84,6 +81,16 @@ int main()
           break;
       }
     }
+
+    if (sf::Mouse::isButtonPressed(sf::Mouse::Left)
+        && grainSpawnerAccumulator >= 0.05f) {
+      sf::Vector2i mouseCellPos = getCellPositionFromMouse(window);
+      sandLocs.push_back(sf::Vector2i(mouseCellPos.x, mouseCellPos.y));
+
+      grainSpawnerAccumulator = 0.0f;
+    }
+
+    grainSpawnerAccumulator += deltaTime;
 
     window.clear(sf::Color::Black);
 
