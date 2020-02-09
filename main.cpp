@@ -29,7 +29,7 @@ std::uniform_int_distribution<int> numDistribution(0, 1);
 
 const int WINDOW_WIDTH = 640;
 const int WINDOW_HEIGHT = 640;
-const int SAND_SIZE = 2;
+const int SAND_SIZE = 8;
 
 int main()
 {
@@ -102,7 +102,7 @@ int main()
 
 std::string getBinFolder()
 {
-  // NOTE: THIS WILL ONLY WORK IN LINUX SYSTEMS, FOR NOW.
+  // NOTE: THIS WILL ONLY WORK IN LINUX SYSTEMS.
   char path[PATH_MAX];
   ssize_t count = readlink("/proc/self/exe", path, PATH_MAX);
   std::string binPath = std::string(path, (count > 0) ? count : 0);
@@ -137,12 +137,12 @@ void applyPhysics(std::vector<sf::Vector2i>* sandLocs, float deltaTime)
 {
   // Just really about applying physics to the sand grains.
   const float PHYSICS_TIME_STEP = 1.f / 30.f;
-  const int Y_DELTA = 1;
+  const int DELTA = SAND_SIZE;
 
   physicsAccumulator += deltaTime;
   while (physicsAccumulator >= PHYSICS_TIME_STEP) {
     for (auto it = sandLocs->begin(); it != sandLocs->end(); it++) {
-      sf::Vector2i possibleBottomGrain(it->x, it->y + 1);
+      sf::Vector2i possibleBottomGrain(it->x, it->y + DELTA);
       if (isSandGrainExists(*sandLocs, possibleBottomGrain)) {
         // Move the grain either to the left or right.
         int grainDirection = numDistribution(randomGenerator);
@@ -150,24 +150,26 @@ void applyPhysics(std::vector<sf::Vector2i>* sandLocs, float deltaTime)
           case 0:
             // Let's move the grain to the left.
             {
-              sf::Vector2i possibleBottomLeftGrain(it->x - 1, it->y + 1);
+              sf::Vector2i possibleBottomLeftGrain(it->x - DELTA,
+                                                   it->y + DELTA);
               if (!isSandGrainExists(*sandLocs, possibleBottomLeftGrain)) {
-                it->x--;
+                it->x -= DELTA;
               }
             }
             break;
           case 1:
             // Let's move the grain to the right.
             {
-              sf::Vector2i possibleBottomRightGrain(it->x + 1, it->y + 1);
+              sf::Vector2i possibleBottomRightGrain(it->x + DELTA,
+                                                    it->y + DELTA);
               if (!isSandGrainExists(*sandLocs, possibleBottomRightGrain)) {
-                it->x++;
+                it->x += DELTA;
               }
             }
             break;
         }
       } else {
-        it->y = std::min(it->y + Y_DELTA, (int) (WINDOW_HEIGHT * 0.75f));
+        it->y = std::min(it->y + DELTA, (int) (WINDOW_HEIGHT * 0.75f));
       }
     }
 
@@ -183,8 +185,8 @@ sf::Vector2i getCellPositionFromMouse(sf::RenderWindow& window)
 
 sf::Vector2i getCellGridPosition(int x, int y)
 {
-  int xCellDelta = x % 2;
-  int yCellDelta = y % 2;
+  int xCellDelta = x % SAND_SIZE;
+  int yCellDelta = y % SAND_SIZE;
   int cellXPos = x - xCellDelta;
   int cellYPos = y - yCellDelta;
   return sf::Vector2i(cellXPos, cellYPos);
