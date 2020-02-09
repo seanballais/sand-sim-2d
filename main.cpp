@@ -1,19 +1,31 @@
 #include <algorithm>
+#include <climits>
+#include <random>
+#include <filesystem>
 #include <iostream>
+#include <string>
 #include <vector>
+#include <unistd.h>
 
 #include <SFML/System.hpp>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 
+std::string getBinFolder();
 void draw(sf::RenderWindow& window,
           sf::RectangleShape* rectangle,
-          std::vector<sf::Vector2f> sandLocs);
-void applyPhysics(std::vector<sf::Vector2f>* sandLocs, float deltaTime);
+          std::vector<sf::Vector2i> sandLocs);
+void drawFPS(sf::RenderWindow& window, int fps, sf::Text& fpsText);
+void applyPhysics(std::vector<sf::Vector2i>* sandLocs, float deltaTime);
 sf::Vector2i getCellPositionFromMouse(sf::RenderWindow& window);
 sf::Vector2i getCellGridPosition(int x, int y);
+bool isSandGrainExists(std::vector<sf::Vector2i>& sandLocs, sf::Vector2i grain);
 
+// Eek! Global variables. It's okay for this occasion though since we're just
+// working on a demo.
 float physicsAccumulator = 0.f;
+std::default_random_engine randomGenerator;
+std::uniform_int_distribution<int> numDistribution(0, 1);
 
 const int WINDOW_WIDTH = 640;
 const int WINDOW_HEIGHT = 640;
@@ -31,13 +43,26 @@ int main()
 
   // We need to use a float vector so that things will be easier for our
   // physics "engine".
-  std::vector<sf::Vector2f> sandLocs;
+  std::vector<sf::Vector2i> sandLocs;
+  
+  sf::Font fpsFont;
+  fpsFont.loadFromFile(getBinFolder() + "/data/SourceCodePro-Regular.ttf");
+  sf::Text fpsText;
+  fpsText.setFont(fpsFont);
+  fpsText.setCharacterSize(16);
+  fpsText.setFillColor(sf::Color::White);
+  fpsText.setPosition(sf::Vector2f(15.f, 15.f));
 
   sf::Clock appClock;
 
   bool isPhysicsEnabled = true;
 
+  int fps = 0;
   while (window.isOpen()) {
+    sf::Time timeElapsed = appClock.restart();
+    float deltaTime = timeElapsed.asMilliseconds() / 1000.f;
+    fps = (int) (1.f / deltaTime);
+
     sf::Event event;
     while (window.pollEvent(event)) {
       switch (event.type) {
@@ -47,8 +72,7 @@ int main()
         case sf::Event::MouseButtonPressed:
           if (event.mouseButton.button == sf::Mouse::Left) {
             sf::Vector2i mouseCellPos = getCellPositionFromMouse(window);
-            sandLocs.push_back(sf::Vector2f((float) mouseCellPos.x,
-                                            (float) mouseCellPos.y));
+            sandLocs.push_back(sf::Vector2i(mouseCellPos.x, mouseCellPos.y));
           }
           break;
         case sf::Event::KeyPressed:
@@ -61,12 +85,10 @@ int main()
       }
     }
 
-    sf::Time timeElapsed = appClock.restart();
-    float deltaTime = timeElapsed.asMilliseconds() / 1000.f;
-
     window.clear(sf::Color::Black);
 
     draw(window, &rectangle, sandLocs);
+    drawFPS(window, fps, fpsText);
 
     window.display();
 
@@ -78,9 +100,19 @@ int main()
   return 0;
 }
 
+std::string getBinFolder()
+{
+  // NOTE: THIS WILL ONLY WORK IN LINUX SYSTEMS, FOR NOW.
+  char path[PATH_MAX];
+  ssize_t count = readlink("/proc/self/exe", path, PATH_MAX);
+  std::string binPath = std::string(path, (count > 0) ? count : 0);
+
+  return std::filesystem::path(binPath).parent_path();
+}
+
 void draw(sf::RenderWindow& window,
           sf::RectangleShape* rectangle,
-          std::vector<sf::Vector2f> sandLocs)
+          std::vector<sf::Vector2i> sandLocs)
 {
   // Draw the cursor.
   sf::Vector2i cursorPos = getCellPositionFromMouse(window);
@@ -90,24 +122,53 @@ void draw(sf::RenderWindow& window,
   // Draw the other sand grains.
   for (auto it = sandLocs.begin(); it != sandLocs.end(); it++) {
     // Put the rectangles in the appropriate grids first.
-    sf::Vector2i gridifiedPos = getCellGridPosition((int) it->x, (int) it->y);
-    rectangle->setPosition((float) gridifiedPos.x, (float) gridifiedPos.y);
+    rectangle->setPosition((float) it->x, (float) it->y);
     window.draw(*rectangle);
   }
 }
 
-void applyPhysics(std::vector<sf::Vector2f>* sandLocs, float deltaTime)
+void drawFPS(sf::RenderWindow& window, int fps, sf::Text& fpsText)
+{
+  fpsText.setString("FPS: " + std::to_string(fps));
+  window.draw(fpsText);
+}
+
+void applyPhysics(std::vector<sf::Vector2i>* sandLocs, float deltaTime)
 {
   // Just really about applying physics to the sand grains.
-  // Assume gravity puts the grains 150 cells down on every second.
   const float PHYSICS_TIME_STEP = 1.f / 30.f;
-  const float GRAVITY = 150.f; // Origin starts from the top-left corner.
-  const float Y_DELTA = GRAVITY * PHYSICS_TIME_STEP;
+  const int Y_DELTA = 1;
 
   physicsAccumulator += deltaTime;
   while (physicsAccumulator >= PHYSICS_TIME_STEP) {
     for (auto it = sandLocs->begin(); it != sandLocs->end(); it++) {
-      it->y = std::min(it->y + Y_DELTA, (float) WINDOW_HEIGHT * 0.75f);
+      sf::Vector2i possibleBottomGrain(it->x, it->y + 1);
+      if (isSandGrainExists(*sandLocs, possibleBottomGrain)) {
+        // Move the grain either to the left or right.
+        int grainDirection = numDistribution(randomGenerator);
+        switch (grainDirection) {
+          case 0:
+            // Let's move the grain to the left.
+            {
+              sf::Vector2i possibleBottomLeftGrain(it->x - 1, it->y + 1);
+              if (!isSandGrainExists(*sandLocs, possibleBottomLeftGrain)) {
+                it->x--;
+              }
+            }
+            break;
+          case 1:
+            // Let's move the grain to the right.
+            {
+              sf::Vector2i possibleBottomRightGrain(it->x + 1, it->y + 1);
+              if (!isSandGrainExists(*sandLocs, possibleBottomRightGrain)) {
+                it->x++;
+              }
+            }
+            break;
+        }
+      } else {
+        it->y = std::min(it->y + Y_DELTA, (int) (WINDOW_HEIGHT * 0.75f));
+      }
     }
 
     physicsAccumulator -= PHYSICS_TIME_STEP;
@@ -127,4 +188,13 @@ sf::Vector2i getCellGridPosition(int x, int y)
   int cellXPos = x - xCellDelta;
   int cellYPos = y - yCellDelta;
   return sf::Vector2i(cellXPos, cellYPos);
+}
+
+bool isSandGrainExists(std::vector<sf::Vector2i>& sandLocs, sf::Vector2i grain)
+{
+  if (std::find(sandLocs.begin(), sandLocs.end(), grain) != sandLocs.end()) {
+    return true;
+  }
+
+  return false;
 }
